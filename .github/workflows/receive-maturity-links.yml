@@ -1,0 +1,39 @@
+name: Receive exact maturity docs candidate
+on:
+  push:
+    branches: [codex/maturity-docs-receipt]
+    paths: [.github/workflows/receive-maturity-links.yml]
+permissions:
+  contents: read
+jobs:
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 20
+          package-manager-cache: false
+      - name: Build exact candidate and receive emitted links
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          git clone --quiet --depth 1 --single-branch --branch codex/maturity-latest-links https://github.com/epistemedeus/spore-host.git candidate
+          cd candidate
+          test "$(git rev-parse HEAD)" = 95e627b3ecc858e28e9b20ce0724f5f7fb68fbdc
+          bash scripts/check-cli-reference-includes.sh
+          cd docs
+          node --version
+          npm ci --no-audit --no-fund
+          npm run build
+          p=.vitepress/dist/reference/maturity.html
+          test -s "$p"
+          for component in truffle spawn lagotto spore-host-mcp; do
+            href="https://github.com/spore-host/$component/releases/latest"
+            test "$(grep -Fo "href=\"$href\"" "$p" | wc -l)" -eq 1
+          done
+          for previous in v0.61.0 v0.136.0 v0.64.0 v0.41.0; do
+            if grep -Fq "<td>$previous</td>" "$p"; then exit 1; fi
+          done
+          printf 'PASS: rendered four official release links and removed all four stale cells\n'
